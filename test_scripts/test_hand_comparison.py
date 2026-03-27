@@ -33,16 +33,16 @@ def extract_hand_data(lms, label: str) -> dict:
     FIX 1: lists are created INSIDE this function → no cross-hand accumulation.
     FIX 2: mid_finger now iterates MIDDLE_FINGER, not THUMB_FINGER.
     """
-    wrist = (lms.landmark[0].x, lms.landmark[0].y)
+    wrist = (lms.landmark[0].x, lms.landmark[0].y, lms.landmark[0].z)
 
-    thumb_data = [[lms.landmark[i].x, lms.landmark[i].y]
+    thumb_data = [[lms.landmark[i].x, lms.landmark[i].y, lms.landmark[i].z]
                   for i in THUMB_FINGER]
 
-    index_data = [[lms.landmark[i].x, lms.landmark[i].y]
+    index_data = [[lms.landmark[i].x, lms.landmark[i].y, lms.landmark[i].z]
                   for i in INDEX_FINGER]
 
     # FIX 2: was `for mid_id in THUMB_FINGER` — should be MIDDLE_FINGER
-    mid_data = [[lms.landmark[i].x, lms.landmark[i].y]
+    mid_data = [[lms.landmark[i].x, lms.landmark[i].y, lms.landmark[i].z]
                 for i in MIDDLE_FINGER]
 
     return {
@@ -61,14 +61,14 @@ def parse_to_array(hand: dict) -> np.ndarray:
     so total = 1+3+4+4 = 12 pts → (12, 2) → 24-D vector.
     """
     pts = []
-    wx, wy = hand['wrist']
-    pts.append([wx, wy])
-    for x, y in hand['thumb_point']:
-        pts.append([x, y])
-    for x, y in hand['index_point']:
-        pts.append([x, y])
-    for x, y in hand['mid_point']:
-        pts.append([x, y])
+    wx, wy, wz = hand['wrist']
+    pts.append([wx, wy, wz])
+    for x, y, z in hand['thumb_point']:
+        pts.append([x, y, z])
+    for x, y, z in hand['index_point']:
+        pts.append([x, y, z])
+    for x, y, z in hand['mid_point']:
+        pts.append([x, y, z])
     return np.array(pts, dtype=np.float32)
 
 
@@ -255,14 +255,12 @@ def main():
                     custom_lm_style, custom_conn_style,
                 )
                 draw_landmark_ids(visual_frame, lms, w, h)
-
-
                 is_grip = is_hand_grip_from_lms(lms)
 
                 if is_grip:
-                    draw_status(visual_frame, "GRIP ✊", CLR_GREEN, y=140)
+                    draw_status(visual_frame, "GRIP", CLR_GREEN, y=140)
                 else:
-                    draw_status(visual_frame, "OPEN ✋", CLR_YELLOW, y=140)
+                    draw_status(visual_frame, "OPEN", CLR_YELLOW, y=140)
 
                 # Highlight fingertips
                 for tip_id in FINGER_TIPS:
