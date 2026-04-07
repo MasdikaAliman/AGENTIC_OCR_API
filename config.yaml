@@ -1,0 +1,66 @@
+camera:
+  source: "data/capture/data5.mp4"   # int (0, 1...) for webcam, or file path
+  frame_w: 640
+  frame_h: 480
+  fps: 30
+
+mediapipe:
+  max_hands: 2
+  detection_confidence: 0.55
+  tracking_confidence: 0.50
+  model_complexity: 1
+
+gesture:
+  grip_threshold: 0.25    # lower = tighter grip required
+  success_delay: 0.1      # seconds hand must stay at assembly zone before advancing
+  pick_dwell_time: 0.0
+
+zones:
+  assembly: [138, 48, 536, 248]   # [x1, y1, x2, y2] — static, does not change per step
+
+colors:
+  white:  [240, 240, 240]
+  green:  [50,  220,  90]
+  red:    [60,   60, 220]
+  yellow: [30,  220, 200]
+  accent: [0,   210, 255]
+  orange: [0,   140, 255]
+  gray:   [120, 120, 120]
+  purple: [200,  80, 200]
+
+
+
+# ── SOP Steps ─────────────────────────────────────────────────────────────────
+# zone_pick: [x1, y1, x2, y2]
+# clr_pick:  one of the color names defined above
+
+sop_steps:
+  - step_id: 0
+    name: "STEP 1"
+    instruction: "Ambil item dari area MERAH"
+    zone_pick: [71, 265, 165, 443]
+    clr_pick: red
+
+  - step_id: 1
+    name: "STEP 2"
+    instruction: "Ambil item dari area ORANGE"
+    zone_pick: [189, 262, 273, 443]
+    clr_pick: orange
+
+  - step_id: 2
+    name: "STEP 3"
+    instruction: "Ambil item dari area UNGU"
+    zone_pick: [281, 259, 377, 440]
+    clr_pick: purple
+
+  - step_id: 3
+    name: "STEP 4"
+    instruction: "Ambil item dari area UNGU"
+    zone_pick: [370, 265, 483, 444]
+    clr_pick: purple
+
+  - step_id: 4
+    name: "STEP 5"
+    instruction: "Ambil item dari area UNGU"
+    zone_pick: [467, 259, 591, 437]
+    clr_pick: purple

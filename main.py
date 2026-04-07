@@ -1,3 +1,5 @@
+import time
+
 import cv2
 from SOPVerifier import SOPVerifier
 from DINOv2Encoder import  DINOv2Encoder
@@ -54,25 +56,91 @@ def run_live(verifier: SOPVerifier, capture_key='s', quit_key='q'):
     cv2.destroyAllWindows()
 
 
+def mouse_callback(event, x, y, flags, param):
+    if event == cv2.EVENT_LBUTTONDOWN:
+        print(f"Mouse clicked: ({x}, {y})")
+
+def run_sop_logic_zone():
+    from config import load_config
+    from hand_tracker import HandTracker, HandState
+    from sop_engine import SOPEngine
+    from renderer import Renderer
+
+    cfg = load_config("config.yaml")
+    engine = SOPEngine(cfg)
+    renderer = Renderer(cfg)
+
+    cap = cv2.VideoCapture(cfg.camera.source)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, cfg.camera.frame_w)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cfg.camera.frame_h)
+    cap.set(cv2.CAP_PROP_FPS, cfg.camera.fps)
+
+    fps, prev_t = 0.0, time.time()
+    cv2.namedWindow("SOP Assembly")
+    cv2.setMouseCallback("SOP Assembly", mouse_callback)
+
+    with HandTracker(cfg) as tracker:
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            display = cv2.resize(frame, (cfg.camera.frame_w, cfg.camera.frame_h))
+
+            # Hand detection (draws landmarks onto display)
+            hand: HandState = HandState()
+            if not engine.all_done:
+                hand = tracker.process(frame, display, engine.current_step)
+
+            # SOP state machine
+            flash = engine.update(hand)
+
+            #Render all overlays
+            fps = 0.9 * fps + 0.1 / max(time.time() - prev_t, 1e-6)
+            prev_t = time.time()
+            renderer.draw_frame(display, engine, hand, flash, fps)
+
+            cv2.imshow("SOP Assembly", display)
+
+            # Hotkeys
+            # if hand.in_wrong_zone:
+            #     print("Wrong detected lamp on")
+            key = cv2.waitKey(1) & 0xFF
+            if key in (ord("q"), 27):
+                break
+            elif key == ord("s"):
+                cv2.imwrite(f"snap_{int(time.time())}.png", display)
+                print(f"[SNAP] Saved snapshot")
+            elif key == ord("p") or hand.in_wrong_zone:
+                print("Paused — press any key to continue")
+                cv2.waitKey(0)
+            elif key == ord("r"):
+                engine.reset()
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+
 if __name__ == '__main__':
-    # 1. Init encoder
-    encoder = DINOv2Encoder(model_name='dinov2_vitb14')
-
-    # 2. Build reference bank (run once)
-    bank = SOPReferenceBank(encoder)
-    bank.register_from_folder("image_test/SOP")
-    bank.save('image_test/SOP')
-
-    # --- OR load existing bank ---
-    # bank = SOPReferenceBank(encoder)
-    # bank.load('image_test/SOP')
-
-    # 3. Create verifier
-    verifier = SOPVerifier(
-        encoder=encoder,
-        bank=bank,
-        pass_threshold=0.8   # tune this per your use case
-    )
+    run_sop_logic_zone()
+    # # 1. Init encoder
+    # encoder = DINOv2Encoder(model_name='dinov2_vitb14')
     #
-    # # 4. Run live
-    run_live(verifier)
+    # # 2. Build reference bank (run once)
+    # bank = SOPReferenceBank(encoder)
+    # bank.register_from_folder("image_test/SOP")
+    # bank.save('image_test/SOP')
+    #
+    # # --- OR load existing bank ---
+    # # bank = SOPReferenceBank(encoder)
+    # # bank.load('image_test/SOP')
+    #
+    # # 3. Create verifier
+    # verifier = SOPVerifier(
+    #     encoder=encoder,
+    #     bank=bank,
+    #     pass_threshold=0.8   # tune this per your use case
+    # )
+    # #
+    # # # 4. Run live
+    # run_live(verifier)
