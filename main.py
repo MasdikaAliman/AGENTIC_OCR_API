@@ -1,12 +1,3 @@
-"""
-main.py — entry point.
-
-run_sop_logic_zone() is the merged pipeline:
-  - Loads config (hand zones + inspect steps from config.yaml)
-  - If any step has mode: inspect, loads DINOv2 and builds one SOPVerifier per step
-  - Main loop: hand tracking → engine.update(hand, frame) → renderer
-"""
-
 import os
 import time
 import cv2
@@ -52,6 +43,12 @@ def build_verifiers(cfg: AppConfig) -> dict:
             detection_threshold=enc_cfg.detection_threshold,
             max_expected_inliers=enc_cfg.max_expected_inliers,
         )
+    elif enc_name == "dinov2":
+        from DINOv2Encoder import DINOv2Encoder
+        encoder = DINOv2Encoder()
+    elif enc_name == "cnn":
+        from CNNEncoder import CNNEncoder
+        encoder = CNNEncoder("resnet50")
     else:
         raise ValueError(
             f"Unknown encoder '{enc_name}' in config.yaml inspect.encoder. "
@@ -88,7 +85,7 @@ def build_verifiers(cfg: AppConfig) -> dict:
                       f"Step {step.name} inspect will always fail. "
                       f"Add reference images and restart.")
                 continue
-            bank.register_from_folder(str(ins.reference_folder))
+            bank.register_from_root(str(ins.reference_folder))
             bank.save(str(embed_path))
 
         verifiers[step.step_id] = SOPVerifier(

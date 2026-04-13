@@ -1,5 +1,5 @@
 camera:
-  source: "data/capture/data4.mp4"   # int (0, 1...) for webcam, or file path
+  source: "data/capture/data5.mp4"   # int (0, 1...) for webcam, or file path
   frame_w: 640
   frame_h: 480
   fps: 30
@@ -12,11 +12,11 @@ mediapipe:
  
 gesture:
   grip_threshold: 0.25    # lower = tighter grip required
-  success_delay: 0.1      # seconds hand must stay at assembly zone before advancing
+  success_delay: 0.0      # seconds hand must stay at assembly zone before advancing
   pick_dwell_time: 0.0
  
 zones:
-  assembly: [138, 48, 536, 248]   # [x1, y1, x2, y2] — static, does not change per step
+  assembly: [130, 10, 536, 248]   # [x1, y1, x2, y2] — static, does not change per step
  
 colors:
   white:  [240, 240, 240]
@@ -34,52 +34,42 @@ colors:
 #   'lightglue'   - accurate, neural matcher, slower on CPU   (needs: pip install -e LightGlue/)
 #
 # lightglue_features: backend extractor for LightGlue
-#   'aliked'      - best for industrial / low-texture items  (RECOMMENDED)
-#   'superpoint'  - general purpose, restrictive license
-#   'disk'        - good for outdoor/complex scenes
-#   'sift'        - classical, no GPU needed, slowest
+#   'aliked'    
+#   'superpoint'  
+#   'disk'        
+#   'sift'        
 inspect:
-  encoder: xfeat               # switch to lightglue to test
+  encoder: cnn         
   pass_threshold: 30           # min inlier count to PASS (tune 10-50)
-  max_num_keypoints: 2048      # max keypoints per image (XFeat top_k / LightGlue max_num_keypoints)
+  max_num_keypoints: 1048      # max keypoints per image (XFeat top_k / LightGlue max_num_keypoints)
   max_expected_inliers: 30     # inlier count that = similarity 1.0 (tune per item size)
   # XFeat only:
   detection_threshold: 0.1   # XFeat keypoint confidence cutoff
   # LightGlue only:
-  lightglue_features: aliked   # aliked | superpoint | disk | sift
+  lightglue_features: superpoint   # aliked | superpoint | disk | sift
   depth_confidence: 0.9      # LightGlue early stopping (lower=faster, -1=off)
   width_confidence: 0.9       # LightGlue point pruning  (lower=faster, -1=off)
   filter_threshold: 0.1        # LightGlue match confidence cutoff (higher=fewer,stronger)
  
 
-# ── SOP Steps ─────────────────────────────────────────────────────────────────
-# zone_pick    : [x1, y1, x2, y2]
-# clr_pick     : one of the color names defined above
-# mode         : "hand_only"  → advance purely on hand-tracker logic
-#                "inspect"    → hand-tracker picks, then DINOv2 verifies crop
-#
-# inspect block (required only when mode: inspect):
-#   crop_coords     : [y1, y2, x1, x2]  region of resized frame to feed DINOv2
-#   reference_folder: path to folder of reference images for this step
-#                     (sorted filenames = sub-step order; single image is fine)
-#   pass_threshold  : override global dino.pass_threshold for this step (optional)
+
 sop_steps:
   - step_id: 0
     name: "STEP 1"
     instruction: "Ambil item area merah, dan Inspeksi"
-    zone_pick: [71, 265, 165, 443]
+    zone_pick: [71, 250, 165, 443]
     clr_pick: red
 #    mode: hand_only
     mode: inspect
     inspect:
-      crop_coords: [ 73, 228, 160, 300 ]      # [y1, y2, x1, x2] on resized 640x480 frame
+      crop_coords: [ 73, 228, 130, 300 ]      # [y1, y2, x1, x2] on resized 640x480 frame
       reference_folder: "data/capture/SOP_IMAGE/STEP1"
-      pass_threshold: 0.5
+      pass_threshold: 0.6
 
   - step_id: 1
     name: "STEP 2"
     instruction: "Ambil item dari area ORANGE"
-    zone_pick: [189, 262, 273, 443]
+    zone_pick: [189, 250, 273, 443]
     clr_pick: orange
     mode: hand_only
 
@@ -87,25 +77,25 @@ sop_steps:
   - step_id: 2
     name: "STEP 3"
     instruction: "Ambil item dari area UNGU"
-    zone_pick: [281, 259, 377, 440]
+    zone_pick: [281, 250, 377, 440]
     clr_pick: purple
     mode: hand_only
 
   - step_id: 3
     name: "STEP 4"
     instruction: "Ambil item dari area UNGU"
-    zone_pick: [370, 265, 483, 444]
+    zone_pick: [370, 250, 483, 444]
     clr_pick: purple
     mode: hand_only
 
   - step_id: 4
     name: "STEP 5"
     instruction: "Ambil item dari area UNGU dan Inspect"
-    zone_pick: [467, 259, 591, 437]
+    zone_pick: [467, 250, 591, 437]
     clr_pick: purple
 #    mode: hand_only
     mode: inspect
     inspect:
       crop_coords: [ 5, 151, 180, 420]      # [y1, y2, x1, x2] on resized 640x480 frame
       reference_folder: "data/capture/SOP_IMAGE/STEP5"
-      pass_threshold: 0.5
+      pass_threshold: 0.6

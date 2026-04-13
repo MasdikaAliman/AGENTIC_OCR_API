@@ -119,51 +119,40 @@ class XFeatEncoder:
     # ── Match (replaces cosine similarity) ────────────────────────────────────
 
     def match(self, feat_ref: dict, feat_live: dict,
-              ratio_thresh: float = 0.82,
-              ransac: bool = True,
-              ransac_thresh: float = 3.5) -> dict:
-        """
-        Match a reference feature dict against a live feature dict.
+            ratio_thresh: float = 0.82,
+            ransac: bool = True,
+            ransac_thresh: float = 3.5) -> dict:
 
-        Returns:
-          {
-            'inliers':     int    — number of geometrically verified matches
-            'total_matches': int  — raw matches before RANSAC
-            'similarity':  float — inliers / top_k (0.0–1.0, for UI display)
-            'mkpts_ref':   np.ndarray (M,2) — matched keypoints in reference
-            'mkpts_live':  np.ndarray (M,2) — matched keypoints in live frame
-          }
-        """
-        desc_ref  = feat_ref['descriptors']    # (N, 64)
-        desc_live = feat_live['descriptors']   # (M, 64)
-        kpts_ref  = feat_ref['keypoints']      # (N, 2)
-        kpts_live = feat_live['keypoints']     # (M, 2)
+        desc_ref  = feat_ref['descriptors']
+        desc_live = feat_live['descriptors']
+        kpts_ref  = feat_ref['keypoints']
+        kpts_live = feat_live['keypoints']
 
         if len(desc_ref) == 0 or len(desc_live) == 0:
             return self._empty_result()
 
-        # ── Brute-force ratio test matching ───────────────────────────────────
-        # Convert to torch for fast matmul
         t_ref  = torch.from_numpy(desc_ref).float()
         t_live = torch.from_numpy(desc_live).float()
 
-        sim_matrix = t_ref @ t_live.T   # (N, M) cosine sim (already L2-normed)
+        sim_matrix = t_ref @ t_live.T  # (N, M) cosine similarities
 
-        # For each ref descriptor, find top-2 live matches
         top2_vals, top2_idx = sim_matrix.topk(min(2, sim_matrix.shape[1]), dim=1)
 
         if top2_vals.shape[1] < 2:
-            # Not enough live descriptors for ratio test — take all matches
             good_mask = torch.ones(len(desc_ref), dtype=torch.bool)
             match_idx = top2_idx[:, 0]
+            match_conf = top2_vals[:, 0]  # raw cosine sim as confidence
         else:
-            # Lowe's ratio test
             ratio = top2_vals[:, 0] / (top2_vals[:, 1] + 1e-8)
-            good_mask = ratio > ratio_thresh
-            match_idx = top2_idx[:, 0]
+            good_mask  = ratio > ratio_thresh
+            match_idx  = top2_idx[:, 0]
+            # ── Per-match confidence: cosine sim scaled by ratio test margin ──
+            # top2_vals[:, 0] is how similar the best match is (like mconf)
+            match_conf = top2_vals[:, 0] * (ratio / (ratio + 1.0))  # dampened by ratio margin
 
         good_idx_ref  = torch.where(good_mask)[0].numpy()
         good_idx_live = match_idx[good_mask].numpy()
+        mconf         = match_conf[good_mask].numpy()  # per-match confidence scores
 
         if len(good_idx_ref) < 4:
             return self._empty_result()
@@ -172,7 +161,7 @@ class XFeatEncoder:
         mkpts_live = kpts_live[good_idx_live]
         total      = len(mkpts_ref)
 
-        # ── RANSAC geometric verification ──────────────────────────────────────
+        # ── RANSAC ─────────────────────────────────────────────────────────────
         inliers = total
         if ransac and total >= 4:
             _, mask = cv2.findHomography(
@@ -182,21 +171,33 @@ class XFeatEncoder:
                 ransac_thresh,
             )
             if mask is not None:
-                inliers    = int(mask.sum())
                 inlier_mask = mask.ravel().astype(bool)
+                inliers     = int(inlier_mask.sum())
                 mkpts_ref   = mkpts_ref[inlier_mask]
                 mkpts_live  = mkpts_live[inlier_mask]
+                # mconf       = mconf[inlier_mask]   # keep only inlier confidences
 
-    
+        # ── Confidence scores (analogous to LoFTR's mconf.mean()) ──────────────
+        mconf_mean = float(mconf.mean()) if len(mconf) > 0 else 0.0
+
         geo_quality    = inliers / max(total, 1)
         abs_confidence = min(inliers / max(self.max_expected_inliers, 1), 1.0)
-        
-        similarity     = 0.5 * geo_quality + 0.5 * abs_confidence
-        ic(geo_quality, abs_confidence, total)
+
+        # Drop-in replacement for your similarity — now includes mconf_mean
+        similarity = (0.34 * geo_quality +
+                    0.33 * abs_confidence +
+                    0.33 * mconf_mean)
+
+        # similarity =  mconf_mean
+
+
+        ic(geo_quality, abs_confidence, mconf_mean, total)
+
         return {
             'inliers':       inliers,
             'total_matches': total,
             'similarity':    round(similarity, 4),
+            'mconf_mean':    round(mconf_mean, 4),   # analogous to LoFTR mconf.mean()
             'mkpts_ref':     mkpts_ref,
             'mkpts_live':    mkpts_live,
         }

@@ -13,7 +13,7 @@ from config import AppConfig, SOPStep
 from hand_tracker import HandState
 from hand_tracker  import _centroid_in_zone
 from SOPVerifier import SOPVerifier
-_INSPECT_COOLDOWN = 0.5
+_INSPECT_COOLDOWN = 0.1
 from FeatureBasedVerifier import FeatureBasedVerifier
 # ── Per-step runtime state ─────────────────────────────────────────────────────
 
@@ -71,12 +71,17 @@ class SOPEngine:
 
         # rt = self._runtimes[current]
         rt = self._runtimes[self.current_step]
+        # icecream.ic(hand.auto_hand_step)
+        # rt = self._runtimes[hand.auto_hand_step] # auto define step based on current_step
+        # self.current_step = hand.auto_hand_step
         # self.current_step = current
         # icecream.ic(current)
         # icecream.ic(self._runtimes)
         # icecream.ic(rt.picked, rt.at_assembly)
         if not rt.picked:
             return self._handle_pre_pick(rt, hand)
+        elif self.step_cfg.needs_inspect and not rt.inspect_passed and rt.picked:
+                return self._handle_inspect(rt, frame)
         else:
             return self._handle_post_pick(rt, hand, frame)
 
@@ -107,7 +112,7 @@ class SOPEngine:
 
             elapsed = now - rt.grip_start
             # Show progress so user knows to hold
-            icecream.ic(elapsed)
+            # icecream.ic(elapsed)
             if elapsed < self._cfg.gesture.pick_dwell_time:
                 pct = int((elapsed / self._cfg.gesture.pick_dwell_time) * 100)
                 # icecream.ic(elapsed, self._cfg.gesture.pick_dwell_time)
@@ -134,17 +139,17 @@ class SOPEngine:
         step = self.step_cfg
 
         # ── Inspect gate (runs once until it passes) ───────────────────────
-        if step.needs_inspect and not rt.inspect_passed and hand.in_assembly:
-            return self._handle_inspect(rt, frame)
+
 
         # ── Assembly phase (same for both modes after inspect clears) ──────
         if hand.in_assembly:
+
             rt.at_assembly = True
 
-        if rt.at_assembly:
-            elapsed = time.time() - rt.picked_time
-            if elapsed > self._cfg.gesture.success_delay:
-                self._advance()
+        if rt.at_assembly or (step.inspect and rt.inspect_passed):
+            # elapsed = time.time() - rt.picked_time
+            # if elapsed > self._cfg.gesture.success_delay:
+            self._advance()
             return FlashMessage(True, f"{step.name} SUCCESS!")
 
         return FlashMessage(False, f"{step.name} — Bring to ASSEMBLY ZONE!")

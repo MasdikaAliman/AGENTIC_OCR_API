@@ -1,28 +1,3 @@
-"""
-LightGlueEncoder.py — Drop-in replacement for XFeatEncoder / DINOv2Encoder.
-Uses SuperPoint (keypoint extractor) + LightGlue (neural matcher).
-
-Why LightGlue over XFeat:
-  - LightGlue uses a neural attention matcher instead of brute-force ratio test
-  - More robust to viewpoint/lighting change on industrial items
-  - ALIKED backend is better than SuperPoint for low-texture manufactured parts
-  - Slower than XFeat on CPU, but significantly more accurate
-
-Supported feature backends:
-  'superpoint'  — general purpose, best known, restrictive license
-  'aliked'      — best for industrial/low-texture items (recommended)
-  'disk'        — good outdoor scenes
-  'sift'        — classical, no GPU needed, slowest
-
-INSTALL (once):
-  git clone https://github.com/cvg/LightGlue.git
-  cd LightGlue
-  pip install -e .
-
-SuperPoint weights download automatically on first use.
-ALIKED weights also download automatically.
-"""
-
 from __future__ import annotations
 import cv2
 import numpy as np

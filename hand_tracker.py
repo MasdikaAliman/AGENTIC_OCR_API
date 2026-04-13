@@ -10,7 +10,7 @@ import mediapipe as mp
 import cv2
 
 from config import AppConfig
-
+from icecream import ic
 # ── Landmark index groups ──────────────────────────────────────────────────────
 _FINGER_TIPS = [4, 8, 12, 16, 20]
 _FINGER_MCP  = [6, 10, 14]
@@ -23,15 +23,15 @@ class HandState:
     grip:          bool = False
     in_pick:       bool = False
     in_assembly:   bool = False
-    in_wrong_zone: bool = False
-
+    in_wrong_zone: bool = False # This for auto define step based on hand
+    auto_hand_step: int = 0
     def merge(self, other: "HandState") -> None:
         """OR-merge another HandState into this one (any hand triggering counts)."""
         self.grip          |= other.grip
         self.in_pick       |= other.in_pick
         self.in_assembly   |= other.in_assembly
         self.in_wrong_zone |= other.in_wrong_zone
-
+        self.auto_hand_step |= other.auto_hand_step
 
 # ── Geometry helpers (module-private) ─────────────────────────────────────────
 
@@ -94,7 +94,7 @@ class HandTracker:
             color=cfg.colors.accent, thickness=2)
         self._lm_style   = self._mp_drawing.DrawingSpec(
             color=cfg.colors.green, thickness=4, circle_radius=4)
-
+        self.auto_current_step = 0
     def process(self, frame: np.ndarray, display: np.ndarray,
                 current_step: int) -> HandState:
         """
@@ -106,6 +106,7 @@ class HandTracker:
         result = self._hands.process(rgb)
 
         merged = HandState()
+        # merged.auto_hand_step = self.auto_current_step
 
         if not (result.multi_hand_landmarks and result.multi_handedness):
             return merged
@@ -144,11 +145,17 @@ class HandTracker:
         mcps      = _landmark_pixels(lms, _FINGER_MCP, w, h)
         gripping  = self._is_grip(lms)
 
+        # for step_id , zone in self._cfg.pick_zones.items():
+        #     if _any_point_in_zone(mcps, zone=zone):
+        #         self.auto_current_step = step_id
+
+        # ic(self.auto_current_step)
+
         pick_zone = self._cfg.pick_zones[current_step]
-        # in_pick   = _any_point_in_zone(mcps, pick_zone)
-        # in_asm    = _any_point_in_zone(mcps, self._cfg.assembly_zone)
-        in_pick = _centroid_in_zone(mcps, pick_zone, 5)
-        in_asm = _centroid_in_zone(mcps, self._cfg.assembly_zone, 5)
+        in_pick   = _any_point_in_zone(mcps, pick_zone)
+        in_asm    = _any_point_in_zone(mcps, self._cfg.assembly_zone)
+        # in_pick = _centroid_in_zone(mcps, pick_zone, 5)
+        # in_asm = _centroid_in_zone(mcps, self._cfg.assembly_zone, 5)
 
         # Wrong-zone: only evaluated when gripping outside the correct zone
         in_wrong = False
@@ -164,6 +171,7 @@ class HandTracker:
             in_pick       = in_pick,
             in_assembly   = in_asm,
             in_wrong_zone = in_wrong,
+            auto_hand_step= self.auto_current_step
         )
 
     def close(self):
