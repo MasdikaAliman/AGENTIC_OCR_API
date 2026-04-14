@@ -124,14 +124,14 @@ def run_sop_logic_zone():
             ret, frame = cap.read()
             if not ret:
                 break
-
+            frame = cv2.flip(frame, 1)  # Mirror horizontally for natural interaction
             display = cv2.resize(frame, (640, 480))
 
             # ── Hand detection ─────────────────────────────────────────────────
             hand = HandState()
             if not engine.all_done:
                 hand = tracker.process(frame, display, engine.current_step)
-            ic(hand.is_two_hands_near)
+        
             # ── SOP state machine ──────────────────────────────────────────────
             flash = engine.update(hand, frame=display)
 
@@ -143,7 +143,7 @@ def run_sop_logic_zone():
             cv2.imshow("SOP Assembly", display)
 
             # ── Hotkeys ────────────────────────────────────────────────────────
-            key = cv2.waitKey(1) & 0xFF
+            key = cv2.waitKey(30) & 0xFF
             if key in (ord("q"), 27):
                 break
             elif key == ord("s"):

@@ -14,7 +14,7 @@ from icecream import ic
 # ── Landmark index groups ──────────────────────────────────────────────────────
 _FINGER_TIPS = [4, 8, 12, 16, 20]
 _FINGER_MCP  = [6, 10, 14]
-
+_PALM_ANCHORS = [0, 5, 9, 13, 17]
 
 # ── Result dataclass ───────────────────────────────────────────────────────────
 
@@ -75,10 +75,8 @@ def _centroid_in_zone(points: list[tuple], zone: tuple, margin: int) -> bool:
     return (x1 + margin) <= cx <= (x2 - margin) and \
         (y1 + margin) <= cy <= (y2 - margin)
 
-def _centroids_distance(c1: tuple[float, float], 
-                        c2: tuple[float, float]) ->float:
-    return float(((c1[0]- c2[0]) ** 2 + (c1[0]- c2[0]) ** 2) ** 0.5)
-
+def _centroids_distance(c1, c2):
+    return float(((c1[0]- c2[0]) ** 2 + (c1[1]- c2[1]) ** 2) ** 0.5)
 
 
 # ── HandTracker class ──────────────────────────────────────────────────────────
@@ -139,14 +137,14 @@ class HandTracker:
             state, centroid = self._analyse(lms, w, h, current_step)
             merged.merge(state)
             centroids.append(centroid)
-        ic(len(centroids))
+        # ic(len(centroids))
         # ── Pass 2: two-hand proximity ─────────────────────────────────────
         if len(centroids) >= 2:
             # Use the first two detected hands (MediaPipe reports at most max_hands)
             dist = _centroids_distance(centroids[0], centroids[1])
-            ic(dist)
+            # ic(dist)
             merged.hands_distance = dist
-            merged.is_two_hands_near     = dist <= 100
+            merged.is_two_hands_near = dist <= 100
         else:
             merged.hands_distance = 0.0
             merged.is_two_hands_near     = False
@@ -171,8 +169,11 @@ class HandTracker:
         """Single-pass analysis for one right-hand landmark set."""
         mcps      = _landmark_pixels(lms, _FINGER_MCP, w, h)
         gripping  = self._is_grip(lms)
-        centroid = _hand_centroid(mcps)
-
+        # anchors  = _landmark_pixels(lms, _PALM_ANCHORS, w, h)
+        # centroid = _hand_centroid(anchors)
+        
+        wrist_lm = lms.landmark[0]
+        centroid = (int(wrist_lm.x * w), int(wrist_lm.y * h))
 
         # for step_id , zone in self._cfg.pick_zones.items():
         #     if _any_point_in_zone(mcps, zone=zone):

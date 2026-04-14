@@ -120,7 +120,8 @@ class Generator:
     # ── Camera ────────────────────────────────────────────────────────────────
 
     def open_camera(self, source=0, frame_width=3840, frame_height=2160):
-        self.cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
+        print(f"[INFO] Opening camera source {source}...")
+        self.cap = cv2.VideoCapture(source)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH,  frame_width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
 
@@ -528,11 +529,11 @@ def run():
     # Load camera source from config.yaml if it exists
     raw    = _load_existing_config()
     source = raw.get("camera", {}).get("source", 0)
-    try:
-        source = int(source)
-    except (ValueError, TypeError):
-        pass
-
+    # try:
+    #     source = int(source)
+    # except (ValueError, TypeError):
+    #     pass
+    print(f"[INFO] Using camera source: {source} (from config.yaml)")
     gen = Generator()
     gen.open_camera(source)
 

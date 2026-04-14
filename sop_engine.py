@@ -7,7 +7,7 @@ import hand_tracker
 from dataclasses import dataclass, field
 import time
 
-import icecream
+from icecream import ic
 
 from config import AppConfig, SOPStep
 from hand_tracker import HandState
@@ -140,9 +140,9 @@ class SOPEngine:
 
         # ── Inspect gate (runs once until it passes) ───────────────────────
 
-
+        ic(hand.hands_distance)
         # ── Assembly phase (same for both modes after inspect clears) ──────
-        if hand.in_assembly:
+        if hand.in_assembly and 10 <= hand.hands_distance <= 150:
 
             rt.at_assembly = True
 
