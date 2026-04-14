@@ -1,0 +1,98 @@
+camera:
+  # source: "data/capture/data5.mp4"   # int (0, 1...) for webcam, or file path
+  source: "0"
+  frame_w: 3840
+  frame_h: 2160
+  fps: 30
+ 
+mediapipe:
+  max_hands: 2
+  detection_confidence: 0.55
+  tracking_confidence: 0.50
+  model_complexity: 1
+ 
+gesture:
+  grip_threshold: 0.25    # lower = tighter grip required
+  success_delay: 0.0      # seconds hand must stay at assembly zone before advancing
+  pick_dwell_time: 0.0
+ 
+
+colors:
+  white:  [240, 240, 240]
+  green:  [50,  220,  90]
+  red:    [60,   60, 220]
+  yellow: [30,  220, 200]
+  accent: [0,   210, 255]
+  orange: [0,   140, 255]
+  gray:   [120, 120, 120]
+  purple: [200,  80, 200]
+ 
+# -- Visual Inspection encoder settings --------------------------------------
+# encoder: which matching algorithm to use
+#   'xfeat'       - fast, CPU real-time, brute-force matcher  (no extra install)
+#   'lightglue'   - accurate, neural matcher, slower on CPU   (needs: pip install -e LightGlue/)
+#
+# lightglue_features: backend extractor for LightGlue
+#   'aliked'    
+#   'superpoint'  
+#   'disk'        
+#   'sift'        
+inspect:
+  encoder: cnn         
+  pass_threshold: 0.8           # min inlier count to PASS (tune 10-50)
+  max_num_keypoints: 1048      # max keypoints per image (XFeat top_k / LightGlue max_num_keypoints)
+  max_expected_inliers: 30     # inlier count that = similarity 1.0 (tune per item size)
+  # XFeat only:
+  detection_threshold: 0.1   # XFeat keypoint confidence cutoff
+  # LightGlue only:
+  lightglue_features: superpoint   # aliked | superpoint | disk | sift
+  depth_confidence: 0.9      # LightGlue early stopping (lower=faster, -1=off)
+  width_confidence: 0.9       # LightGlue point pruning  (lower=faster, -1=off)
+  filter_threshold: 0.1        # LightGlue match confidence cutoff (higher=fewer,stronger)
+ 
+
+
+
+zones:
+  assembly:
+  - 194
+  - 35
+  - 578
+  - 183
+sop_steps:
+- step_id: 0
+  name: STEP 1
+  instruction: Ambil item dari area RED
+  zone_pick:
+  - 484
+  - 276
+  - 559
+  - 409
+  clr_pick: red
+  mode: inspect
+  inspect:
+    crop_coords:
+    - 179
+    - 308
+    - 306
+    - 408
+    reference_folder: data/sop_ref/step0
+    pass_threshold: 0.75
+- step_id: 1
+  name: STEP 2
+  instruction: Ambil item dari area ORANGE
+  zone_pick:
+  - 150
+  - 236
+  - 263
+  - 382
+  clr_pick: orange
+  mode: inspect
+  inspect:
+    crop_coords:
+    - 182
+    - 319
+    - 300
+    - 419
+    reference_folder: data/sop_ref/step1
+    pass_threshold: 0.75
