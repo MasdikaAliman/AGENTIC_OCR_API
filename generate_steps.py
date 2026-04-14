@@ -120,7 +120,7 @@ class Generator:
     # ── Camera ────────────────────────────────────────────────────────────────
 
     def open_camera(self, source=0, frame_width=3840, frame_height=2160):
-        self.cap = cv2.VideoCapture(source)
+        self.cap = cv2.VideoCapture(source, cv2.CAP_DSHOW)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH,  frame_width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
 

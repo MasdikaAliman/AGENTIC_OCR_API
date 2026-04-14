@@ -23,14 +23,19 @@ class HandState:
     grip:          bool = False
     in_pick:       bool = False
     in_assembly:   bool = False
-    in_wrong_zone: bool = False # This for auto define step based on hand
-    auto_hand_step: int = 0
+    in_wrong_zone: bool = False
+    is_two_hands_near: bool = False
+    hands_distance: float = 0.0
+    auto_hand_step: int = 0 # This for auto define step based on hand
+
     def merge(self, other: "HandState") -> None:
         """OR-merge another HandState into this one (any hand triggering counts)."""
         self.grip          |= other.grip
         self.in_pick       |= other.in_pick
         self.in_assembly   |= other.in_assembly
         self.in_wrong_zone |= other.in_wrong_zone
+        self.is_two_hands_near |= other.is_two_hands_near
+        self.hands_distance = other.hands_distance
         self.auto_hand_step |= other.auto_hand_step
 
 # ── Geometry helpers (module-private) ─────────────────────────────────────────
@@ -70,6 +75,11 @@ def _centroid_in_zone(points: list[tuple], zone: tuple, margin: int) -> bool:
     return (x1 + margin) <= cx <= (x2 - margin) and \
         (y1 + margin) <= cy <= (y2 - margin)
 
+def _centroids_distance(c1: tuple[float, float], 
+                        c2: tuple[float, float]) ->float:
+    return float(((c1[0]- c2[0]) ** 2 + (c1[0]- c2[0]) ** 2) ** 0.5)
+
+
 
 # ── HandTracker class ──────────────────────────────────────────────────────────
 
@@ -95,34 +105,51 @@ class HandTracker:
         self._lm_style   = self._mp_drawing.DrawingSpec(
             color=cfg.colors.green, thickness=4, circle_radius=4)
         self.auto_current_step = 0
+    
     def process(self, frame: np.ndarray, display: np.ndarray,
                 current_step: int) -> HandState:
         """
-        Run MediaPipe on `frame`, draw landmarks onto `display`.
-        Returns merged HandState for all detected right hands.
-        Single pass — no nested loops.
+        Run MediaPipe on , draw landmarks onto .
+
+        Two-pass strategy:
+          Pass 1 : draw landmarks + collect per-hand state and centroid.
+          Pass 2 : if two hands detected, compute proximity between their
+                   centroids and set is_two_hands_near / hands_distance on merged state.
         """
         rgb    = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = self._hands.process(rgb)
 
         merged = HandState()
-        # merged.auto_hand_step = self.auto_current_step
 
         if not (result.multi_hand_landmarks and result.multi_handedness):
             return merged
 
         h, w = display.shape[:2]
 
-        for lms, handedness in zip(result.multi_hand_landmarks, result.multi_handedness):
+        # ── Pass 1: per-hand analysis ──────────────────────────────────────
+        centroids: list[tuple[float, float]] = []
+
+        for lms, handedness in zip(result.multi_hand_landmarks,
+                                   result.multi_handedness):
             self._mp_drawing.draw_landmarks(
                 display, lms, self._mp_hands.HAND_CONNECTIONS,
                 self._lm_style, self._conn_style,
             )
 
-            if handedness.classification[0].label == "Left":
-                continue  # only analyse right hand
-
-            merged.merge(self._analyse(lms, w, h, current_step))
+            state, centroid = self._analyse(lms, w, h, current_step)
+            merged.merge(state)
+            centroids.append(centroid)
+        ic(len(centroids))
+        # ── Pass 2: two-hand proximity ─────────────────────────────────────
+        if len(centroids) >= 2:
+            # Use the first two detected hands (MediaPipe reports at most max_hands)
+            dist = _centroids_distance(centroids[0], centroids[1])
+            ic(dist)
+            merged.hands_distance = dist
+            merged.is_two_hands_near     = dist <= 100
+        else:
+            merged.hands_distance = 0.0
+            merged.is_two_hands_near     = False
 
         return merged
 
@@ -144,6 +171,8 @@ class HandTracker:
         """Single-pass analysis for one right-hand landmark set."""
         mcps      = _landmark_pixels(lms, _FINGER_MCP, w, h)
         gripping  = self._is_grip(lms)
+        centroid = _hand_centroid(mcps)
+
 
         # for step_id , zone in self._cfg.pick_zones.items():
         #     if _any_point_in_zone(mcps, zone=zone):
@@ -152,10 +181,10 @@ class HandTracker:
         # ic(self.auto_current_step)
 
         pick_zone = self._cfg.pick_zones[current_step]
-        in_pick   = _any_point_in_zone(mcps, pick_zone)
-        in_asm    = _any_point_in_zone(mcps, self._cfg.assembly_zone)
-        # in_pick = _centroid_in_zone(mcps, pick_zone, 5)
-        # in_asm = _centroid_in_zone(mcps, self._cfg.assembly_zone, 5)
+        # in_pick   = _any_point_in_zone(mcps, pick_zone)
+        # in_asm    = _any_point_in_zone(mcps, self._cfg.assembly_zone)
+        in_pick = _centroid_in_zone(mcps, pick_zone, 5)
+        in_asm = _centroid_in_zone(mcps, self._cfg.assembly_zone, 5)
 
         # Wrong-zone: only evaluated when gripping outside the correct zone
         in_wrong = False
@@ -166,13 +195,15 @@ class HandTracker:
                 if step_id != current_step
             )
 
-        return HandState(
+        state = HandState(
             grip          = gripping,
             in_pick       = in_pick,
             in_assembly   = in_asm,
             in_wrong_zone = in_wrong,
             auto_hand_step= self.auto_current_step
         )
+
+        return state, centroid
 
     def close(self):
         self._hands.close()

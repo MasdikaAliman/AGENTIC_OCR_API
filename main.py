@@ -3,7 +3,7 @@ import time
 import cv2
 
 from config import load_config, AppConfig
-
+from icecream import ic
 
 # ── Verifier bootstrap ─────────────────────────────────────────────────────────
 
@@ -76,6 +76,7 @@ def build_verifiers(cfg: AppConfig) -> dict:
             print(f"    Loading cached embeddings from {embed_path}")
             bank.load(str(embed_path))
         else:
+            print("Load from reference folder image")
             image_files = [
                 f for f in os.listdir(str(ins.reference_folder))
                 if f.lower().endswith(('.jpg', '.jpeg', '.png'))
@@ -105,7 +106,7 @@ def run_sop_logic_zone():
     from sop_engine import SOPEngine
     from renderer import Renderer
 
-    cfg       = load_config("config.yaml")
+    cfg       = load_config("SOP_CUSTOM.yaml")
     verifiers = build_verifiers(cfg)
     engine    = SOPEngine(cfg, verifiers=verifiers)
     renderer  = Renderer(cfg)
@@ -124,13 +125,13 @@ def run_sop_logic_zone():
             if not ret:
                 break
 
-            display = cv2.resize(frame, (cfg.camera.frame_w, cfg.camera.frame_h))
+            display = cv2.resize(frame, (640, 480))
 
             # ── Hand detection ─────────────────────────────────────────────────
             hand = HandState()
             if not engine.all_done:
                 hand = tracker.process(frame, display, engine.current_step)
-
+            ic(hand.is_two_hands_near)
             # ── SOP state machine ──────────────────────────────────────────────
             flash = engine.update(hand, frame=display)
 
