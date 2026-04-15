@@ -42,8 +42,8 @@ from typing import Optional
 # ── Config ─────────────────────────────────────────────────────────────────────
 
 CONFIG_PATH     = "SOP_CUSTOM.yaml"
-DISPLAY_W       = 640
-DISPLAY_H       = 480
+DISPLAY_W       = 1280
+DISPLAY_H       = 720
 REF_IMAGE_BASE  = "data/sop_ref"   # reference images saved here per step
 
 # Step color palette (cycles through for each step)
@@ -117,6 +117,10 @@ class Generator:
         self.cap            = None
         self.last_frame     = None
 
+        # Pause state — when True, camera is frozen and drawing still works
+        self.paused         = False
+        self.frozen_frame   = None   # copy of frame at the moment P was pressed
+
     # ── Camera ────────────────────────────────────────────────────────────────
 
     def open_camera(self, source=0, frame_width=3840, frame_height=2160):
@@ -129,6 +133,7 @@ class Generator:
         ret, frame = self.cap.read()
         if not ret:
             return self.last_frame
+        frame = cv2.flip(frame, 1)
         frame = cv2.resize(frame, (DISPLAY_W, DISPLAY_H))
         self.last_frame = frame.copy()
         return frame
@@ -185,6 +190,12 @@ class Generator:
                 self.draw_target = "zone_pick"
                 print(f"[DRAW] Now drawing: zone_pick")
 
+        elif key == ord("b"):
+            if self.current.mode == "inspect":
+                self.current.mode = "hand_only"
+                self.draw_target = "zone_pick"
+                print(f"[MODE] Step {self.current.step_id+1} → HAND_ONLY")
+
         # A — switch to drawing assembly zone
         elif key == ord('a'):
             self.draw_target = "assembly"
@@ -225,6 +236,17 @@ class Generator:
                 self.draw_target  = "zone_pick"
             else:
                 print("[WARN] No steps to delete")
+
+
+        # P — toggle pause (freeze frame, drawing still works)
+        elif key == ord('p'):
+            self.paused = not self.paused
+            if self.paused:
+                self.frozen_frame = self.last_frame.copy() if self.last_frame is not None else None
+                print("[PAUSE] Frozen — draw zones on this frame. Press P to resume.")
+            else:
+                self.frozen_frame = None
+                print("[RESUME] Camera live again.")
 
         # SPACE — finish
         elif key == ord(' '):
@@ -337,6 +359,17 @@ class Generator:
                 cv2.rectangle(display, (min(sx,ex), min(sy,ey)),
                               (max(sx,ex), max(sy,ey)), live_color, 2)
 
+        # Pause overlay
+        if self.paused:
+            overlay = display.copy()
+            cv2.rectangle(overlay, (0, 0), (w, h), (20, 20, 20), -1)
+            cv2.addWeighted(overlay, 0.25, display, 0.75, 0, display)
+            cv2.putText(display, "PAUSED", (w//2 - 60, h//2 - 10),
+                        cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 210, 255), 2, cv2.LINE_AA)
+            cv2.putText(display, "Draw zones freely  |  P = resume",
+                        (w//2 - 140, h//2 + 22),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.48, (200, 200, 200), 1, cv2.LINE_AA)
+
         # HUD
         self._draw_hud(display, h, w)
         return display
@@ -373,6 +406,7 @@ class Generator:
 
         # Key hints at bottom
         hints = [
+            "P: pause/resume",
             "M: toggle mode/target",
             "A: assembly zone",
             "R: reset rect",
@@ -529,10 +563,11 @@ def run():
     # Load camera source from config.yaml if it exists
     raw    = _load_existing_config()
     source = raw.get("camera", {}).get("source", 0)
-    # try:
-    #     source = int(source)
-    # except (ValueError, TypeError):
-    #     pass
+    try:
+        source = int(source)
+    except (ValueError, TypeError):
+        pass\
+
     print(f"[INFO] Using camera source: {source} (from config.yaml)")
     gen = Generator()
     gen.open_camera(source)
@@ -543,6 +578,7 @@ def run():
     print("\n" + "═"*60)
     print("  SOP CONFIG GENERATOR")
     print("═"*60)
+    print("  P          : pause camera (freeze frame) — draw zones on still image")
     print("  M          : toggle mode (hand_only ↔ inspect) / switch draw target")
     print("  A          : draw assembly zone (shared, do this once)")
     print("  R          : reset current rectangle")
@@ -555,10 +591,14 @@ def run():
     print(f"  Configuring STEP 1 | draw zone_pick, then press N\n")
 
     while True:
-        frame = gen.read_frame()
-        if frame is None:
-            print("[ERROR] Cannot read camera.")
-            break
+        # When paused use the frozen frame; otherwise read live from camera
+        if gen.paused and gen.frozen_frame is not None:
+            frame = gen.frozen_frame.copy()
+        else:
+            frame = gen.read_frame()
+            if frame is None:
+                print("[ERROR] Cannot read camera.")
+                break
 
         display = gen.render(frame)
         cv2.imshow("SOP Generator", display)

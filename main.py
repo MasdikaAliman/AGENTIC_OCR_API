@@ -125,7 +125,7 @@ def run_sop_logic_zone():
             if not ret:
                 break
             frame = cv2.flip(frame, 1)  # Mirror horizontally for natural interaction
-            display = cv2.resize(frame, (640, 480))
+            display = cv2.resize(frame, (1280, 720))
 
             # ── Hand detection ─────────────────────────────────────────────────
             hand = HandState()
@@ -143,7 +143,7 @@ def run_sop_logic_zone():
             cv2.imshow("SOP Assembly", display)
 
             # ── Hotkeys ────────────────────────────────────────────────────────
-            key = cv2.waitKey(30) & 0xFF
+            key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
                 break
             elif key == ord("s"):

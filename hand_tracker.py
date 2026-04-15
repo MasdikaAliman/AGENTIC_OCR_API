@@ -78,6 +78,11 @@ def _centroid_in_zone(points: list[tuple], zone: tuple, margin: int) -> bool:
 def _centroids_distance(c1, c2):
     return float(((c1[0]- c2[0]) ** 2 + (c1[1]- c2[1]) ** 2) ** 0.5)
 
+def center_zone(zone):
+    x_center = zone[0] + zone[2] // 2
+    y_center = zone[1] + zone[3] // 2
+    return [x_center , y_center]
+
 
 # ── HandTracker class ──────────────────────────────────────────────────────────
 
@@ -91,6 +96,7 @@ class HandTracker:
         self._cfg = cfg
         mp_hands  = mp.solutions.hands
         self._hands = mp_hands.Hands(
+         
             model_complexity         = cfg.mediapipe.model_complexity,
             max_num_hands            = cfg.mediapipe.max_hands,
             min_detection_confidence = cfg.mediapipe.detection_confidence,
@@ -137,17 +143,20 @@ class HandTracker:
             state, centroid = self._analyse(lms, w, h, current_step)
             merged.merge(state)
             centroids.append(centroid)
-        # ic(len(centroids))
+        ic(len(centroids), centroids)
         # ── Pass 2: two-hand proximity ─────────────────────────────────────
         if len(centroids) >= 2:
             # Use the first two detected hands (MediaPipe reports at most max_hands)
             dist = _centroids_distance(centroids[0], centroids[1])
             # ic(dist)
             merged.hands_distance = dist
-            merged.is_two_hands_near = dist <= 100
+            merged.is_two_hands_near = dist <= 150
         else:
-            merged.hands_distance = 0.0
-            merged.is_two_hands_near     = False
+            
+            center_assembly_zone = center_zone(self._cfg.assembly_zone)
+            ic(centroids[0], center_assembly_zone)
+            merged.hands_distance = _centroids_distance(centroids[0], center_assembly_zone)
+            merged.is_two_hands_near =  merged.hands_distance <= 150
 
         return merged
 
@@ -169,11 +178,11 @@ class HandTracker:
         """Single-pass analysis for one right-hand landmark set."""
         mcps      = _landmark_pixels(lms, _FINGER_MCP, w, h)
         gripping  = self._is_grip(lms)
-        # anchors  = _landmark_pixels(lms, _PALM_ANCHORS, w, h)
-        # centroid = _hand_centroid(anchors)
+        anchors  = _landmark_pixels(lms, _PALM_ANCHORS, w, h)
+        centroid = _hand_centroid(anchors)
         
-        wrist_lm = lms.landmark[0]
-        centroid = (int(wrist_lm.x * w), int(wrist_lm.y * h))
+        # wrist_lm = lms.landmark[0]
+        # centroid = (int(wrist_lm.x * w), int(wrist_lm.y * h))
 
         # for step_id , zone in self._cfg.pick_zones.items():
         #     if _any_point_in_zone(mcps, zone=zone):
@@ -182,10 +191,10 @@ class HandTracker:
         # ic(self.auto_current_step)
 
         pick_zone = self._cfg.pick_zones[current_step]
-        # in_pick   = _any_point_in_zone(mcps, pick_zone)
-        # in_asm    = _any_point_in_zone(mcps, self._cfg.assembly_zone)
-        in_pick = _centroid_in_zone(mcps, pick_zone, 5)
-        in_asm = _centroid_in_zone(mcps, self._cfg.assembly_zone, 5)
+        in_pick   = _any_point_in_zone(mcps, pick_zone)
+        in_asm    = _any_point_in_zone(mcps, self._cfg.assembly_zone)
+        # in_pick = _centroid_in_zone(mcps, pick_zone, 5)
+        # in_asm = _centroid_in_zone(mcps, self._cfg.assembly_zone, 5)
 
         # Wrong-zone: only evaluated when gripping outside the correct zone
         in_wrong = False

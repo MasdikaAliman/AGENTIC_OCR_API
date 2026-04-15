@@ -65,9 +65,9 @@ class SOPEngine:
 
     def update(self, hand: HandState, frame=None) -> FlashMessage | None:
 
-        if self.all_done:
-            self.reset()
-            return None
+        # if self.all_done:
+        #     self.reset()
+        #     return None
 
         # rt = self._runtimes[current]
         rt = self._runtimes[self.current_step]
@@ -142,7 +142,7 @@ class SOPEngine:
 
         ic(hand.hands_distance)
         # ── Assembly phase (same for both modes after inspect clears) ──────
-        if hand.in_assembly and 10 <= hand.hands_distance <= 150:
+        if hand.in_assembly and 10 <= hand.hands_distance <= 200:
 
             rt.at_assembly = True
 
