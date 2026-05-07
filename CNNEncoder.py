@@ -31,7 +31,7 @@ class CNNEncoder:
         assert model_name in self.SUPPORTED, (
             f"model_name must be one of {list(self.SUPPORTED.keys())}"
         )
-        self.device     = device or ('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device     = device or ('cpu' if torch.cuda.is_available() else 'cpu')
         self.model_name = model_name
         self.embed_dim  = self.SUPPORTED[model_name][2]
 

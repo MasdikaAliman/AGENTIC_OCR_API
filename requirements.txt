@@ -1,0 +1,8 @@
+opencv-python
+numpy
+torch
+torchvision
+Pillow
+icecream
+PyYAML
+mediapipe==0.10.14

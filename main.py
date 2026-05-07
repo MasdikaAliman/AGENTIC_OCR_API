@@ -1,7 +1,8 @@
 import os
 import time
 import cv2
-
+import queue
+import threading
 from config import load_config, AppConfig
 from icecream import ic
 
@@ -12,7 +13,7 @@ def build_verifiers(cfg: AppConfig) -> dict:
     For every inspect-mode step, create a SOPVerifier backed by its own
     SOPReferenceBank loaded from the step's reference_folder.
 
-    Returns a dict  { step_id: SOPVerifier }
+    Returns a dict  { step_id: SOPVerifier }SOP_CUSTOM.yaml
     Only imports DINOv2 / torch if there are actually inspect steps (lazy load).
     """
     inspect_steps = [s for s in cfg.sop_steps if s.needs_inspect]
@@ -101,8 +102,155 @@ def build_verifiers(cfg: AppConfig) -> dict:
 
 # ── Main loop ──────────────────────────────────────────────────────────────────
 
+class SOPPipeline:
+
+    def __init__(self, cfg, engine, renderer, tracker):
+
+        self.cfg = cfg
+        self.engine = engine
+        self.renderer = renderer
+        self.tracker = tracker
+
+        self.is_running = False
+
+        self.frame_queue = queue.Queue(maxsize=1)
+        self.result_queue = queue.Queue(maxsize=1)
+
+        self.capture_thread = None
+        self.process_thread = None
+
+
+    def _capture_loop(self, cap):
+
+        while self.is_running:
+
+            ret, frame = cap.read()
+
+            if not ret:
+                continue
+
+            frame = cv2.flip(frame, 1)
+            frame = cv2.resize(frame, (1280, 720))
+
+            # Drop old frame if queue full
+            if self.frame_queue.full():
+                try:
+                    self.frame_queue.get_nowait()
+                except queue.Empty:
+                    pass
+
+            self.frame_queue.put(frame)
+
+
+    def _process_loop(self):
+
+        from hand_tracker import HandState
+
+        while self.is_running:
+
+            try:
+                frame = self.frame_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+
+       
+            if not self.engine.all_done:
+                hand = self.tracker.process(
+                    frame,
+                    self.engine.current_step
+                )
+            else:
+                hand = HandState()
+
+            flash = self.engine.update(hand, frame=frame)
+
+            result = {
+                "frame": frame,
+                "hand": hand,
+                "flash": flash
+            }
+
+
+            if self.result_queue.full():
+                try:
+                    self.result_queue.get_nowait()
+                except queue.Empty:
+                    pass
+
+            self.result_queue.put(result)
+
+
+    def run(self, cap):
+
+        self.is_running = True
+
+        self.capture_thread = threading.Thread(
+            target=self._capture_loop,
+            args=(cap,),
+            daemon=True
+        )
+
+        self.process_thread = threading.Thread(
+            target=self._process_loop,
+            daemon=True
+        )
+
+        self.capture_thread.start()
+        self.process_thread.start()
+
+        fps = 0
+        prev_t = time.time()
+
+        cv2.namedWindow("SOP Assembly")
+
+        latest_result = None
+
+        while cap.isOpened() and self.is_running:
+
+            # Get newest processed result
+            try:
+                latest_result = self.result_queue.get_nowait()
+            except queue.Empty:
+                pass
+
+            if latest_result is not None:
+
+                display = latest_result["frame"].copy()
+
+                fps = 0.9 * fps + 0.1 / max(time.time() - prev_t, 1e-6)
+                prev_t = time.time()
+
+                self.renderer.draw_frame(
+                    display,
+                    self.engine,
+                    latest_result["hand"],
+                    latest_result["flash"],
+                    fps
+                )
+
+                cv2.imshow("SOP Assembly", display)
+
+            key = cv2.waitKey(1) & 0xFF
+
+            if key in [27, ord('q')]:
+                self.is_running = False
+                break
+            elif key == ord("p"):
+                print("Paused, press any key to continue")
+                cv2.waitKey(0)
+            elif key == ord('r'):
+                self.engine.reset()
+
+        self.is_running = False
+
+        self.capture_thread.join(timeout=1.0)
+        self.process_thread.join(timeout=1.0)
+
+        cap.release()
+        cv2.destroyAllWindows()
+
 def run_sop_logic_zone():
-    from hand_tracker import HandTracker, HandState
+    from hand_tracker import HandTracker
     from sop_engine import SOPEngine
     from renderer import Renderer
 
@@ -111,51 +259,14 @@ def run_sop_logic_zone():
     engine    = SOPEngine(cfg, verifiers=verifiers)
     renderer  = Renderer(cfg)
 
-    cap = cv2.VideoCapture(cfg.camera.source)
+    cap = cv2.VideoCapture(cfg.camera.source, cv2.CAP_DSHOW)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  cfg.camera.frame_w)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cfg.camera.frame_h)
     cap.set(cv2.CAP_PROP_FPS,          cfg.camera.fps)
 
-    fps, prev_t = 0.0, time.time()
-    cv2.namedWindow("SOP Assembly")
-
     with HandTracker(cfg) as tracker:
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-            frame = cv2.flip(frame, 1)  # Mirror horizontally for natural interaction
-            display = cv2.resize(frame, (1280, 720))
-
-            # ── Hand detection ─────────────────────────────────────────────────
-            hand = HandState()
-            if not engine.all_done:
-                hand = tracker.process(frame, display, engine.current_step)
-        
-            # ── SOP state machine ──────────────────────────────────────────────
-            flash = engine.update(hand, frame=display)
-
-            # ── Render overlays ────────────────────────────────────────────────
-            fps    = 0.9 * fps + 0.1 / max(time.time() - prev_t, 1e-6)
-            prev_t = time.time()
-            renderer.draw_frame(display, engine, hand, flash, fps)
-
-            cv2.imshow("SOP Assembly", display)
-
-            # ── Hotkeys ────────────────────────────────────────────────────────
-            key = cv2.waitKey(1) & 0xFF
-            if key in (ord("q"), 27):
-                break
-            elif key == ord("s"):
-                fname = f"snap_{int(time.time())}.png"
-                cv2.imwrite(fname, display)
-                print(f"[SNAP] Saved {fname}")
-            elif key == ord("p"):
-                print("Paused — press any key to continue")
-                cv2.waitKey(0)
-            elif key == ord("r"):
-                engine.reset()
-                print("[HOTKEY] Manual reset")
+        pipeline = SOPPipeline(cfg, engine, renderer, tracker)
+        pipeline.run(cap)
 
     cap.release()
     cv2.destroyAllWindows()

@@ -54,6 +54,7 @@ class SOPEngine:
         self.all_done      = False
         self._start_time:    float = 0.0
         self._elapsed_total: float = 0.0
+        self._start_done_time: float = 0.0
 
     @property
     def step_cfg(self) -> SOPStep:
@@ -65,19 +66,15 @@ class SOPEngine:
 
     def update(self, hand: HandState, frame=None) -> FlashMessage | None:
 
-        # if self.all_done:
-        #     self.reset()
-        #     return None
+        if self.all_done:
+            elapsed_done_time = time.time() - self._start_done_time
+            if elapsed_done_time > 3.0:
+                self.reset()
+                return None
+            return FlashMessage(True, "All SOP steps completed!")
 
-        # rt = self._runtimes[current]
         rt = self._runtimes[self.current_step]
-        # icecream.ic(hand.auto_hand_step)
-        # rt = self._runtimes[hand.auto_hand_step] # auto define step based on current_step
-        # self.current_step = hand.auto_hand_step
-        # self.current_step = current
-        # icecream.ic(current)
-        # icecream.ic(self._runtimes)
-        # icecream.ic(rt.picked, rt.at_assembly)
+
         if not rt.picked:
             return self._handle_pre_pick(rt, hand)
         elif self.step_cfg.needs_inspect and not rt.inspect_passed and rt.picked:
@@ -140,7 +137,7 @@ class SOPEngine:
 
         # ── Inspect gate (runs once until it passes) ───────────────────────
 
-        ic(hand.hands_distance)
+        # ic(hand.hands_distance)
         # ── Assembly phase (same for both modes after inspect clears) ──────
         if hand.in_assembly and 10 <= hand.hands_distance <= 200:
 
@@ -230,4 +227,5 @@ class SOPEngine:
             print(f"\n[NEXT] Proceeding to {self.step_cfg.name}")
         else:
             self.all_done = True
+            self._start_done_time = time.time()
             print("\n[DONE] All SOP steps completed!")

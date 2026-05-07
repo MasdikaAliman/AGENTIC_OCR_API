@@ -4,7 +4,7 @@ No drawing, no SOP logic — purely detects gesture and zone membership.
 """
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import numpy as np
 import mediapipe as mp
 import cv2
@@ -13,7 +13,7 @@ from config import AppConfig
 from icecream import ic
 # ── Landmark index groups ──────────────────────────────────────────────────────
 _FINGER_TIPS = [4, 8, 12, 16, 20]
-_FINGER_MCP  = [6, 10, 14]
+_FINGER_MCP  = [7, 11, 15, 19]
 _PALM_ANCHORS = [0, 5, 9, 13, 17]
 
 # ── Result dataclass ───────────────────────────────────────────────────────────
@@ -27,6 +27,7 @@ class HandState:
     is_two_hands_near: bool = False
     hands_distance: float = 0.0
     auto_hand_step: int = 0 # This for auto define step based on hand
+    raw_landmarks: list = field(default_factory=list)
 
     def merge(self, other: "HandState") -> None:
         """OR-merge another HandState into this one (any hand triggering counts)."""
@@ -110,7 +111,7 @@ class HandTracker:
             color=cfg.colors.green, thickness=4, circle_radius=4)
         self.auto_current_step = 0
     
-    def process(self, frame: np.ndarray, display: np.ndarray,
+    def process(self, frame: np.ndarray,
                 current_step: int) -> HandState:
         """
         Run MediaPipe on , draw landmarks onto .
@@ -128,22 +129,17 @@ class HandTracker:
         if not (result.multi_hand_landmarks and result.multi_handedness):
             return merged
 
-        h, w = display.shape[:2]
+        h, w = frame.shape[:2]
 
         # ── Pass 1: per-hand analysis ──────────────────────────────────────
         centroids: list[tuple[float, float]] = []
 
         for lms, handedness in zip(result.multi_hand_landmarks,
                                    result.multi_handedness):
-            self._mp_drawing.draw_landmarks(
-                display, lms, self._mp_hands.HAND_CONNECTIONS,
-                self._lm_style, self._conn_style,
-            )
-
             state, centroid = self._analyse(lms, w, h, current_step)
             merged.merge(state)
             centroids.append(centroid)
-        ic(len(centroids), centroids)
+        # ic(len(centroids), centroids)
         # ── Pass 2: two-hand proximity ─────────────────────────────────────
         if len(centroids) >= 2:
             # Use the first two detected hands (MediaPipe reports at most max_hands)
@@ -154,9 +150,12 @@ class HandTracker:
         else:
             
             center_assembly_zone = center_zone(self._cfg.assembly_zone)
-            ic(centroids[0], center_assembly_zone)
+            # ic(centroids[0], center_assembly_zone)
             merged.hands_distance = _centroids_distance(centroids[0], center_assembly_zone)
             merged.is_two_hands_near =  merged.hands_distance <= 150
+
+        if result.multi_hand_landmarks:
+            merged.raw_landmarks = list(result.multi_hand_landmarks)
 
         return merged
 

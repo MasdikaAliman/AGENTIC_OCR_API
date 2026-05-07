@@ -2,6 +2,7 @@
 from __future__ import annotations
 import cv2
 import numpy as np
+import mediapipe as mp
 
 from config import AppConfig, SOPStep
 from sop_engine import SOPEngine, FlashMessage
@@ -12,6 +13,12 @@ class Renderer:
 
     def __init__(self, cfg: AppConfig):
         self._cfg = cfg
+        self._mp_drawing = mp.solutions.drawing_utils
+        self._mp_hands = mp.solutions.hands
+        self._conn_style = self._mp_drawing.DrawingSpec(
+            color=cfg.colors.accent, thickness=2)
+        self._lm_style   = self._mp_drawing.DrawingSpec(
+            color=cfg.colors.green, thickness=4, circle_radius=4)
 
     def draw_frame(self, display: np.ndarray, engine: SOPEngine,
                    hand: HandState, flash: FlashMessage | None, fps: float):
@@ -19,6 +26,7 @@ class Renderer:
 
         if not engine.all_done:
             self._draw_all_zones(display, engine)
+            self._draw_hands(display, hand)
             self._draw_grip_label(display, hand)
             self._draw_step_hint(display, engine)
             self._draw_inspect_crop(display, engine)   # new: highlight crop region
@@ -35,6 +43,14 @@ class Renderer:
         self._draw_fps(display, fps)
 
     # ── Zone drawing ───────────────────────────────────────────────────────────
+
+    def _draw_hands(self, display: np.ndarray, hand: HandState):
+        if hasattr(hand, 'raw_landmarks') and hand.raw_landmarks:
+            for lms in hand.raw_landmarks:
+                self._mp_drawing.draw_landmarks(
+                    display, lms, self._mp_hands.HAND_CONNECTIONS,
+                    self._lm_style, self._conn_style,
+                )
 
     def _draw_all_zones(self, display: np.ndarray, engine: SOPEngine):
         cfg = self._cfg
